@@ -117,8 +117,6 @@ class InternalSensorControllerImpl(
 
 
 
-
-
     // start streaming: IMU = gyro + linear acceleration
     override fun startImuStream() {
         _measuring.update { true } // Set measuring to true when starting the stream
@@ -197,13 +195,6 @@ class InternalSensorControllerImpl(
 
             _intAngleFromAlg2.update { intAngleFromAlg2 } // Update _intAngleFromAlg2
 
-            // Introduce a delay before updating the angle display
-           // GlobalScope.launch(Dispatchers.Main) {
-           //     delay(50000) // Adjust the delay duration as needed
-
-                // Update the UI variable
-            //    _currentGyroUI.update { _currentGyro }
-           // }
 
         }
     }
@@ -294,8 +285,6 @@ class InternalSensorControllerImpl(
     }
 
 
-
-
     @OptIn(DelicateCoroutinesApi::class)
     override fun startGyroStream() {
         if (gyroSensor == null) {
@@ -312,16 +301,13 @@ class InternalSensorControllerImpl(
         sensorManager.registerListener(this, gyroSensor, SensorManager.SENSOR_DELAY_UI)
 
 
-
         // Start a coroutine to update the UI variable on a 2 Hz interval
         GlobalScope.launch(Dispatchers.Main) {
             _streamingGyro.value = true
             while (_streamingGyro.value) {
                 // Update the UI variable
                 _currentGyroUI.update { _currentGyro }
-               // val scalingFactor = 0.5
                 delay(500)
-                //delay((1000 * scalingFactor).toLong())
             }
         }
 
@@ -336,10 +322,7 @@ class InternalSensorControllerImpl(
     }
 
 
-
-
     private fun handleInternalAccData(sensorEvent: SensorEvent) {
-        //for (sample in _streamingLinAcc.sample)
         if (sensorEvent.sensor.type == Sensor.TYPE_LINEAR_ACCELERATION) {
             val timestamp = sensorEvent.timestamp // Convert nanoseconds to seconds
             _timeIntalg1.update { timestamp }

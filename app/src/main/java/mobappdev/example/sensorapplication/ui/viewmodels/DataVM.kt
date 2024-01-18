@@ -9,11 +9,13 @@ package mobappdev.example.sensorapplication.ui.viewmodels
  * Last modified: 2023-07-11
  */
 
-//import java.io.File // to be able to save the file
+import android.content.ContentValues.TAG
 import android.os.Environment
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,6 +25,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import mobappdev.example.sensorapplication.domain.BluetoothDeviceDomain
 import mobappdev.example.sensorapplication.domain.InternalSensorController
 import mobappdev.example.sensorapplication.domain.PolarController
 import java.io.File
@@ -36,6 +40,9 @@ class DataVM @Inject constructor(
     private val polarController: PolarController,
     private val internalSensorController: InternalSensorController,
 ): ViewModel() {
+
+    val discoveredDevices = polarController.discoveredDevices
+   // val scannedDevices: StateFlow<List<BluetoothDeviceDomain>> = polarController.scannedDevices
 
     private val gyroDataFlow = internalSensorController.currentGyroUI
     private val linAccDataFlow = internalSensorController.currentLinAccUI
@@ -81,25 +88,49 @@ class DataVM @Inject constructor(
             else -> null
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-//
 
+    /*
     private val _state = MutableStateFlow(DataUiState())
-
-    val state = combine( // només agafa 5 variables
+    
+    val state = combine(
+        polarController.scannedDevices,
         polarController.angleFromAlg1list,
         polarController.angleFromAlg2list,
         polarController.timealg1list,
         polarController.connected,
-        _state
-    ) { angleFromAlg1List, angleFromAlg2List, time1list, connected,
-        state->
+        _state,
+    ) { scannedDevices, angleFromAlg1List, angleFromAlg2List, time1list , connected, state  ->
         state.copy(
+            scannedDevices = scannedDevices ,
             angleFromAlg1List = angleFromAlg1List,
             angleFromAlg2List = angleFromAlg2List,
             time1PolList = time1list,
-            connected = connected
+            connected = connected,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _state.value)
+
+
+     */
+
+    private val _state = MutableStateFlow(DataUiState())
+
+    val state = combine(
+        polarController.angleFromAlg1list,
+       // polarController.angleFromAlg2list,
+        polarController.timealg1list,
+        polarController.connected,
+        _state,
+        polarController.scannedDevices
+        ) {  angleFromAlg1List, time1list, connected, state,scannedDevices ->
+        state.copy(
+            angleFromAlg1List = angleFromAlg1List,
+            time1PolList = time1list,
+            connected = connected,
+            scannedDevices = scannedDevices
+            )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _state.value)
+
+
 
     private val _internalState = MutableStateFlow(DataUiState())
 
@@ -118,8 +149,6 @@ class DataVM @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _internalState.value)
 
 
-
-
     private var streamType: StreamType? = null
 
 
@@ -130,10 +159,33 @@ class DataVM @Inject constructor(
 
     fun chooseSensor(deviceId: String) {
         _deviceId.update { deviceId }
+        connectToSensor()
+
     }
 
+    // to do update to connect to selected device
     fun connectToSensor() {
-        polarController.connectToDevice(_deviceId.value)
+        viewModelScope.launch {
+            try {
+                withTimeout(5000L) {
+                    polarController.connectToDevice(_deviceId.value)
+                    //_state.update { it.copy(connected = true) }
+                    _stateConnection.update {
+                        it.copy(
+                            connected = polarController.connected.value,
+                            //connecting = polarController.connecting.value
+                        )
+                    }
+                }
+
+            } catch (e: TimeoutCancellationException) {
+                Log.d(TAG, "$e")
+            }
+        }
+       // polarController.connectToDevice(_deviceId.value)
+    }
+    fun startDeviceDiscovery() {
+        polarController.startDeviceDiscovery()
     }
 
     fun disconnectFromSensor() {
@@ -146,8 +198,32 @@ class DataVM @Inject constructor(
         streamType = StreamType.FOREIGN_HR
         _state.update { it.copy(measuring = true) }
     }
+
+    private val _stateConnection = MutableStateFlow(Connection())
+
+    val stateConnection = combine(
+        polarController.connected,
+        //polarController.connecting,
+        polarController.measuring,
+        _stateConnection
+    ) { connected, measuring, stateConnection ->
+        stateConnection.copy(
+
+            connected = connected,
+            //connecting = connecting,
+            measuring = measuring
+
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _stateConnection.value)
+
+    data class Connection(
+        val connected: Boolean = false,
+      //  val connecting: Boolean = false,
+        val measuring: Boolean = false
+    )
+
     fun startPolar(){
-        polarController.startCombinedStreaming(_deviceId.value)
+        polarController.startPolarStreaming(_deviceId.value)
         streamType = StreamType.FOREIGN
         _state.update { it.copy(measuring = true) }
     }
@@ -165,7 +241,7 @@ class DataVM @Inject constructor(
             StreamType.LOCAL_GYRO -> internalSensorController.stopGyroStream()
             StreamType.LOCAL_ACC -> internalSensorController.stopImuStream() // stop overall imu stream
             StreamType.FOREIGN_HR -> polarController.stopHrStreaming()
-            StreamType.FOREIGN -> polarController.stopCombinedStreaming()
+            StreamType.FOREIGN -> polarController.stopPolarStreaming()
 
             else -> {} // Do nothing
         }
@@ -183,11 +259,10 @@ class DataVM @Inject constructor(
     fun stopImuStream() {
         when (streamType) {
             StreamType.LOCAL_ACC -> internalSensorController.stopImuStream()
-            else -> {} // Do nothing
+            else -> {}
         }
         _state.update { it.copy(measuring = false) }
     }
-
 
 
     //  state to track whether recording is in progress
@@ -220,9 +295,6 @@ class DataVM @Inject constructor(
             }
         }
 
-
-
-
     }
 
 
@@ -252,39 +324,28 @@ class DataVM @Inject constructor(
             FileWriter(csvFile).use { writer ->
                 // Write data to the CSV file
                 val polarAlg1List = state.value.angleFromAlg1List
-                val polarAlg2List =state.value.angleFromAlg2List
                 val internalAlg1List = state.value.intAngleFromAlg1List
-                val internalAlg2List = state.value.intAngleFromAlg2List
                 val time1Pollist = state.value.time1PolList
                 val timeIntAlg1List = state.value.timeIntAlg1List
-                val timeIntAlg2List = state.value.timeIntAlg2List
 
-                // Write header to the CSV file
                 writer.append("Polar Alg1, Internal Alg1, Time Polar, Time Int Alg1\n")
 
                 for (i in polarAlg1List.indices){
                     val polarAlg1 = polarAlg1List.getOrNull(i) ?: 0.0
-                    val polarAlg2 = polarAlg2List.getOrNull(i) ?: 0.0
                     val internalAlg1 = internalAlg1List.getOrNull(i) ?: 0.0
-                    val internalAlg2 = internalAlg2List.getOrNull(i) ?: 0.0
                     val timeAlg1 = time1Pollist.getOrNull(i) ?: 0L
                     val timeIntAlg1 = timeIntAlg1List.getOrNull(i) ?: 0L
-                    val timeIntAlg2 = timeIntAlg2List.getOrNull(i) ?: 0L
 
                     writer.append("$polarAlg1, $internalAlg1, , $timeAlg1, $timeIntAlg1 \n")
                 }
             }
-            // File saved successfully
         } catch (e: IOException) {
             e.printStackTrace()
-            // show error message if it didn't work
         }
     }
 
     fun createCsvFile(): File {
-        val timestamp = System.currentTimeMillis() // Generate a timestamp
-        val fileName = "Sensor_data_$timestamp.csv" // Append timestamp to the file name
-
+        val fileName = "Sensor_data.csv"
         val downloadsDir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
             fileName
@@ -297,14 +358,9 @@ class DataVM @Inject constructor(
         return downloadsDir
     }
 
-
-
-
 }
 
 data class DataUiState(
-   // val hrList: List<Int> = emptyList(),
-    // val accelerationList: List<Triple<Float, Float, Float>?> = emptyList(), // Define the type of data in the list
     val angleFromAlg1List: List<Float?> = emptyList(),
     val angleFromAlg2List: List<Float?> = emptyList(),
     val time1PolList: List<Long> = emptyList(),
@@ -313,13 +369,10 @@ data class DataUiState(
     val timeIntAlg1List: List<Long?> = emptyList(),
     val timeIntAlg2List: List<Long?> = emptyList(),
     val connected: Boolean = false,
-    val measuring: Boolean = false
-)
+    val measuring: Boolean = false,
+    val scannedDevices: List<BluetoothDeviceDomain> = emptyList(),
 
-
-
-
-
+    )
 
 enum class StreamType {
     LOCAL_GYRO, LOCAL_ACC, FOREIGN_HR, FOREIGN_ACC, FOREIGN
@@ -339,6 +392,3 @@ sealed class CombinedPolarSensorData {
 sealed class internalSensorData {
     data class InternalAngles(val intAngle1: Float?, val intAngle2: Float?, val timeInt1: Long,val timeInt2: Long) : internalSensorData()
 }
-
-
-

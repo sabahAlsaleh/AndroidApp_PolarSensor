@@ -42,6 +42,4 @@ interface InternalSensorController {
 
     fun applyAngleOfElevation()
 
-
-
 }

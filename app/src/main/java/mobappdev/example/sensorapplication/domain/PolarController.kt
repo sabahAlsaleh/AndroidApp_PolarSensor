@@ -9,6 +9,8 @@ package mobappdev.example.sensorapplication.domain
  */
 
 
+import android.bluetooth.BluetoothDevice
+import com.polar.sdk.api.model.PolarDeviceInfo
 import kotlinx.coroutines.flow.StateFlow
 
 interface PolarController {
@@ -33,15 +35,21 @@ interface PolarController {
 
     val connected: StateFlow<Boolean>
     val measuring: StateFlow<Boolean>
+    val connecting: StateFlow<Boolean>
 
+
+    val discoveredDevices: StateFlow<List<BluetoothDevice>>
+
+    val scannedDevices: StateFlow<List<BluetoothDeviceDomain>>
+    val pairedDevices: StateFlow<List<BluetoothDeviceDomain>>
     fun connectToDevice(deviceId: String)
     fun disconnectFromDevice(deviceId: String)
-
-    fun startCombinedStreaming(deviceId: String)
-    fun stopCombinedStreaming()
+    fun startDeviceDiscovery()
+    fun stopDeviceDiscovery()
+    fun release()
+    fun startPolarStreaming(deviceId: String)
+    fun stopPolarStreaming()
     fun calculateAndApplyAngles()
-
-
 
     fun startHrStreaming(deviceId: String)
     fun stopHrStreaming()

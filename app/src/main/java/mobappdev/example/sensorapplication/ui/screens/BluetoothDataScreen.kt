@@ -9,6 +9,7 @@ package mobappdev.example.sensorapplication.ui.screens
  */
 
 import android.os.Environment
+import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,8 +61,6 @@ fun BluetoothDataScreen(
     val csvFiles: List<File> = directory.listFiles { file -> file.extension == "csv" }?.toList() ?: emptyList()
     val fileNames: List<String> = csvFiles.map { it.name }
 
-
-
     val recordingInProgress by vm.recordingInProgress.collectAsState()
 
 
@@ -75,8 +74,6 @@ fun BluetoothDataScreen(
         internalConnected = remember(state.connected) {
         !state.connected
     }
-
-    //var internalRunning by remember { mutableStateOf<Boolean>(false) }
 
 
     val value: String = when {
@@ -125,8 +122,7 @@ fun BluetoothDataScreen(
         }
 
     else -> {
-            // Not connected case
-            // Define the string when not connected
+
             when (val combinedSensorData = vm.combinedDataFlow.collectAsState().value) {
                 is CombinedSensorData.GyroData -> {
                     val triple = combinedSensorData.gyro
@@ -163,16 +159,17 @@ fun BluetoothDataScreen(
         Text(text = if (state.connected) "Polar sense connected" else "Internal sensors connected")
         Spacer(modifier = Modifier.height(200.dp))
 
-
-
         Text(text = "Select sensor:")
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceAround,
             modifier = Modifier.fillMaxWidth()
         ){
-            Button(
-                onClick = vm::connectToSensor,
+
+            /*Button(
+                onClick = {
+                    vm.connectToSensor()
+                },
                 enabled = !polarConnected,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -184,6 +181,31 @@ fun BluetoothDataScreen(
             ) {
                 Text(text = "Polar sense", fontSize = 18.sp)
             }
+
+             */
+            Button(
+                onClick = {
+                    if (!polarConnected) {
+                        // Start device discovery when connecting to Polar sensor
+                        vm.startDeviceDiscovery()
+                        navController.navigate("SensorSelectionScreen")
+                    } else {
+                        Log.d("BluetoothDataScreen", "Polar sensor already connected")
+                    }
+                },
+                enabled = !polarConnected,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    disabledContainerColor = Color.Gray
+                ),
+                modifier = Modifier
+                    .height(60.dp)
+                    .width(140.dp)
+            ) {
+                Text(text = "Polar sense", fontSize = 18.sp)
+            }
+
+
             Button(
                 onClick = vm::disconnectFromSensor,
                 enabled =  !internalConnected,

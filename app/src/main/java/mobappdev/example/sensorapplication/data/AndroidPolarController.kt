@@ -9,7 +9,12 @@ package mobappdev.example.sensorapplication.data
  * Last modified: 2023-07-11
  */
 
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.util.Log
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallback
@@ -27,12 +32,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import mobappdev.example.sensorapplication.domain.BluetoothDeviceDomain
+import mobappdev.example.sensorapplication.domain.FoundDeviceReceiver
 import mobappdev.example.sensorapplication.domain.PolarController
 import java.util.UUID
 import kotlin.math.absoluteValue
 import kotlin.math.atan2
 import kotlin.math.sqrt
-
+@SuppressLint("MissingPermission")
 class AndroidPolarController(
     private val context: Context,
 ) : PolarController {
@@ -58,6 +65,7 @@ class AndroidPolarController(
     private var accDisposable: Disposable? = null
     private var gyroDisposable: Disposable? = null
     private val TAG = "AndroidPolarController"
+    private var selectedSensorId: String? = null
 
     private val _currentHR = MutableStateFlow<Int?>(null)
     override val currentHR: StateFlow<Int?>
@@ -70,6 +78,10 @@ class AndroidPolarController(
     private val _connected = MutableStateFlow(false)
     override val connected: StateFlow<Boolean>
         get() = _connected.asStateFlow()
+
+    private val _connecting = MutableStateFlow(false)
+    override val connecting: StateFlow<Boolean>
+        get() = _connecting.asStateFlow()
 
     private val _measuring = MutableStateFlow(false)
     override val measuring: StateFlow<Boolean>
@@ -125,6 +137,18 @@ class AndroidPolarController(
         get() = _timealg2list.asStateFlow()
 
 
+    // bluetooth sitting
+    private val bluetoothManager by lazy{
+        context.getSystemService(BluetoothManager::class.java)
+    }
+    private val bluetoothAdapter by lazy{
+        bluetoothManager?.adapter
+    }
+    private val _discoveredDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
+    override val discoveredDevices: StateFlow<List<BluetoothDevice>>
+        get() = _discoveredDevices.asStateFlow()
+
+
 
     init {
         api.setPolarFilter(false) //if true, only Polar devices are looked for
@@ -159,13 +183,65 @@ class AndroidPolarController(
         })
     }
 
+    private val _scannedDevices= MutableStateFlow<List<BluetoothDeviceDomain>>(emptyList())
+    override val scannedDevices: StateFlow<List<BluetoothDeviceDomain>>
+        get() = _scannedDevices.asStateFlow()
+
+    private val _pairedDevices= MutableStateFlow<List<BluetoothDeviceDomain>>(emptyList())
+    override val pairedDevices: StateFlow<List<BluetoothDeviceDomain>>
+        get() = _pairedDevices.asStateFlow()
+
+    private val foundDeviceReceiver = FoundDeviceReceiver{ device->
+        _scannedDevices.update { devices->
+            val newDevice = device.toBluetoothDeviceDomain()
+            if (newDevice in devices) devices else devices + newDevice
+        }
+    }
+
+
+    override fun startDeviceDiscovery() {
+        //check permission
+
+        context.registerReceiver(
+            foundDeviceReceiver,
+            IntentFilter(BluetoothDevice.ACTION_FOUND)
+        )
+        updatePairedDevices()
+        bluetoothAdapter?.startDiscovery()
+
+    }
+
+    override fun stopDeviceDiscovery() {
+        //check permission
+
+        bluetoothAdapter?.cancelDiscovery()
+    }
+
+    override fun release() {
+        context.unregisterReceiver(foundDeviceReceiver)
+    }
+    private fun updatePairedDevices(){
+        //if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)){
+        //  return}
+        bluetoothAdapter
+            ?.bondedDevices
+            ?.map{ it.toBluetoothDeviceDomain()}
+            ?.also{ devices->
+                _pairedDevices.update { devices }}
+    }
+
+
     override fun connectToDevice(deviceId: String) {
+        _connected.update{true}
+
         try {
             api.connectToDevice(deviceId)
         } catch (polarInvalidArgument: PolarInvalidArgument) {
             Log.e(TAG, "Failed to connect to $deviceId.\n Reason $polarInvalidArgument")
         }
     }
+
+
 
     override fun disconnectFromDevice(deviceId: String) {
         try {
@@ -241,14 +317,21 @@ class AndroidPolarController(
         }
     }
 
-    override fun startCombinedStreaming(deviceId: String) {
+    /**
+     * Start streaming accelerometer and gyroscope data from a Polar device.
+     * @param deviceId The ID of the Polar device to connect to.
+     */
+    override fun startPolarStreaming(deviceId: String) {
+        // Check if either accelerometer or gyroscope is already streaming
         if (accDisposable?.isDisposed == false || gyroDisposable?.isDisposed == false) {
             Log.d(TAG, "Already streaming")
             return
         }
 
+        // Set measuring state to true
         _measuring.update { true }
 
+        // Define accelerometer sensor settings
         val accSensorSettings = mapOf(
             PolarSensorSetting.SettingType.CHANNELS to 3,
             PolarSensorSetting.SettingType.RANGE to 8,
@@ -257,6 +340,7 @@ class AndroidPolarController(
         )
         val polarAccSettings = PolarSensorSetting(accSensorSettings)
 
+        // Define gyroscope sensor settings
         val gyroSensorSettings = mapOf(
             PolarSensorSetting.SettingType.CHANNELS to 3,
             PolarSensorSetting.SettingType.RANGE to 2000,
@@ -265,6 +349,7 @@ class AndroidPolarController(
         )
         val polarGyroSettings = PolarSensorSetting(gyroSensorSettings)
 
+        // Start streaming accelerometer data
         accDisposable = api.startAccStreaming(deviceId, polarAccSettings)
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
@@ -282,6 +367,7 @@ class AndroidPolarController(
                 }
             )
 
+        // Start streaming gyroscope data
         gyroDisposable = api.startGyroStreaming(deviceId, polarGyroSettings)
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
@@ -300,6 +386,7 @@ class AndroidPolarController(
             )
     }
 
+
     override fun calculateAndApplyAngles() {
         val acc = _currentAcceleration.value
         val gyro = _currentGyro.value
@@ -316,22 +403,15 @@ class AndroidPolarController(
             _angleFromAlg1List.update { angleFromAlg1List -> angleFromAlg1List + angleFromAlg1 }
             _angleFromAlg2List.update { angleFromAlg2List -> angleFromAlg2List + angleFromAlg2 }
 
-            // Use the calculated angles as needed
-            // For example, you can update UI elements or perform further processing
-            // You may need to handle these values according to your application's requirements
-            // For example:
-            // _angleFromAlg1.update { angleFromAlg1 }
-            // _angleFromAlg2.update { angleFromAlg2 }
         }
     }
 
-    override fun stopCombinedStreaming() {
+    override fun stopPolarStreaming() {
         _measuring.update { false }
         accDisposable?.dispose()
         gyroDisposable?.dispose()
         _currentAcceleration.update { null }
         _currentGyro.update { null }
-        // Perform any additional cleanup if necessary
     }
 
 
@@ -360,8 +440,6 @@ class AndroidPolarController(
         // Map the angle to a range from 0 to 180 degrees
         return currentFilteredAngle.absoluteValue
     }
-
-
 
 
     private val alpha2: Float = 0.9f // Filter factor for the second function

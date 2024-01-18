@@ -68,7 +68,7 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                         Pair(
                             System.currentTimeMillis(),
                             data.angle1 ?: 0f
-                        ) // Use angle1 or modify as needed
+                        )
                     }
 
                     else -> Pair(0L, 0f)
@@ -82,7 +82,7 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                         Pair(
                             System.currentTimeMillis(),
                             data.angle2 ?: 0f
-                        ) // Use angle1 or modify as needed
+                        )
                     }
 
                     else -> Pair(0L, 0f)
@@ -95,7 +95,6 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                 when (val internalData = combinedInternalSensorData) {
                     is internalSensorData.InternalAngles -> {
                         Pair(System.currentTimeMillis(), internalData.intAngle1 ?: 0f)
-                        // Use intAngle1 or modify as needed
                     }
 
                     else -> Pair(0L, 0f)
@@ -108,7 +107,6 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                     when (val internalData = combinedInternalSensorData) {
                         is internalSensorData.InternalAngles -> {
                             Pair(System.currentTimeMillis(), internalData.intAngle2 ?: 0f)
-                            // Use intAngle1 or modify as needed
                         }
 
                         else -> Pair(0L, 0f)
@@ -134,8 +132,8 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
     val internalAngle2 = combinedInternalSensorData?.intAngle2 ?: 0f
     val internalTime = combinedInternalSensorData?.timeInt1 ?: 0L
 
-    Column(modifier = Modifier.fillMaxSize()) {
 
+    Column(modifier = Modifier.fillMaxSize()) {
 
         Row(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.weight(1f)) {
@@ -147,7 +145,6 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                 )
             }
 
-            // Remove the Column for time text
         }
         Row(modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -155,12 +152,22 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
+
                     text = if (state.connected) "$angle" else "$internalAngle",
                     modifier = Modifier.padding(8.dp)
                 )
+                Text(
+
+                    text = if (state.connected)"Polar sense connected" else "\"Polar sense NOT connected",
+                    modifier = Modifier.padding(8.dp)
+                )
+
             }
 
         }
+
+        Spacer(modifier = Modifier.height(300.dp))
+
         Column(modifier = Modifier.weight(1f)) {
 
 
@@ -168,6 +175,25 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                 horizontalArrangement = Arrangement.Center,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                Button(
+                    onClick = {
+                        if (state.connected) {
+                            vm.startPolar()
+                        }
+                        vm.startRecording()
+                    }, // Navigate to Graphscreen,
+                    enabled = (!state.measuring),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        disabledContainerColor = Color.Gray
+                    ),
+                    modifier = Modifier
+                        .height(60.dp)
+                        .width(140.dp)
+                ) {
+                    Text(text = "Start", fontSize = 22.sp)
+                }
+
                 Button(
                     onClick = {
                         vm.stopDataStream()
@@ -183,27 +209,29 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                 ) {
                     Text(text = "STOP", fontSize = 18.sp)
                 }
+
+
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Button(
-                onClick = {
-                    vm.saveCSVToFile()
-                },
-                enabled = !state.measuring,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary
-                ),
-                modifier = Modifier
-                    .height(40.dp)
-                    .width(100.dp)
-            ) {
-                Text(text = "Export ", fontSize = 14.sp)
-            }
-
 
         }
+
+
+        Button(
+            onClick = {
+                vm.saveCSVToFile()
+            },
+            enabled = !state.measuring,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.secondary
+            ),
+            modifier = Modifier
+                .height(40.dp)
+                .width(100.dp)
+        ) {
+            Text(text = "Export ", fontSize = 14.sp)
+        }
+
+
         Button(
             onClick = {
                 navController.popBackStack()
