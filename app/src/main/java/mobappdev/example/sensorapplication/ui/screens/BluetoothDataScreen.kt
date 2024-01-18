@@ -245,7 +245,7 @@ fun BluetoothDataScreen(
                     .height(80.dp)
                     .width(180.dp)
             ) {
-                Text(text = "Start", fontSize = 22.sp)
+                Text(text = "Start internal", fontSize = 22.sp)
             }
         }
             // Display the recording in progress text only if recording is in progress

@@ -191,7 +191,7 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                         .height(60.dp)
                         .width(140.dp)
                 ) {
-                    Text(text = "Start", fontSize = 22.sp)
+                    Text(text = "Start polar", fontSize = 22.sp)
                 }
 
                 Button(
@@ -210,12 +210,10 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
                     Text(text = "STOP", fontSize = 18.sp)
                 }
 
-
             }
 
         }
-
-
+        
         Button(
             onClick = {
                 vm.saveCSVToFile()
@@ -231,10 +229,9 @@ fun GraphScreen(vm: DataVM, navController: NavController) {
             Text(text = "Export ", fontSize = 14.sp)
         }
 
-
         Button(
             onClick = {
-                navController.popBackStack()
+                navController.navigate("BluetoothDataScreen")
                 vm.stopRecording() // Navigate back to the previous screen
             },
             modifier = Modifier
